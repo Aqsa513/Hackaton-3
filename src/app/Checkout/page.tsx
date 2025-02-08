@@ -1,213 +1,307 @@
+
 "use client";
 
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
+import { getCartItems } from "../actions/action";
+import Link from "next/link";
+import { Product } from "../../../types/products";
+import { urlFor } from "@/sanity/lib/image";
+import { CgChevronRight } from "react-icons/cg";
+import order from "@/sanity/schemaTypes/order";
+import { client } from "@/sanity/lib/client";
+import Swal from "sweetalert2";
 
-const Order = () => {
-  const [pan, setPan] = useState("");
-  const [isChecked, setIsChecked] = useState(false);
 
+export default function CheckoutPage() {
+  const [cartItems, setCartItems] = useState<Product[]>([]);
+  const [discount, setDiscount] = useState<number>(0);
+  const [formValues, setFormValues] = useState({
+    firstName: "",
+    lastName: "",
+    address: "",
+    city: "",
+    zipCode: "",
+    phone: "",
+    email: "",
+  });
+
+  const [formErrors, setFormErrors] = useState({
+    firstName: false,
+    lastName: false,
+    address: false,
+    city: false,
+    zipCode: false,
+    phone: false,
+    email: false,
+  });
+
+  useEffect(() => {
+    setCartItems(getCartItems());
+    const appliedDiscount = localStorage.getItem("appliedDiscount");
+    if (appliedDiscount) {
+      setDiscount(Number(appliedDiscount));
+    }
+  }, []);
+
+  const subtotal = cartItems.reduce(
+    (total, item) => total + item.price * item.inventory,
+    0
+  );
+  const total = Math.max(subtotal - discount, 0);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormValues({
+      ...formValues,
+      [e.target.id]: e.target.value,
+    });
+  };
+
+  const validateForm = () => {
+    const errors = {
+      firstName: !formValues.firstName,
+      lastName: !formValues.lastName,
+      address: !formValues.address,
+      city: !formValues.city,
+      zipCode: !formValues.zipCode,
+      phone: !formValues.phone,
+      email: !formValues.email,
+    };
+    setFormErrors(errors);
+    return Object.values(errors).every((error) => !error);
+  };
+
+  const handlePlaceOrder =  async () => {
+    
+    Swal.fire({
+          title: "Processing your order...",
+          text: "Please wait a moment.",
+          icon: "info",
+          showCancelButton: true,
+          confirmButtonColor: "#3085d6",
+          cancelButtonColor: "#d33",
+          confirmButtonText: "Proceed",
+        }).then((result) => {
+          if (result.isConfirmed) {
+            if(validateForm()){
+              localStorage.removeItem("appliedDiscount");
+              Swal.fire(
+                "Success!",
+                "Your order has been successfully processed!",
+                "success"
+              );
+            } else {
+              Swal.fire(
+                 "Eror!",
+                "please fill in all the faileds before processing",
+                "error"
+              );
+            }
+          }
+        });
+              
+
+    const  orderData = {
+      _type: "order",
+      firstName: formValues.firstName,
+      lastName: formValues.lastName,
+      address: formValues.address,
+      city: formValues.city,
+      zipCode: formValues.zipCode,
+      phone: formValues.phone,
+      email: formValues.email,
+      cartItems: cartItems.map(item =>({
+        _type: "reference",
+        _ref: item._id
+      })),
+      total: total,
+      discount: discount,
+      orderDate : new Date().toISOString(),
+    };
+
+    try {
+      await client.create(orderData)
+      localStorage.removeItem("appliedDiscount")
+    
+    }
+    catch (error) {
+      console.error("error creating eror", error)
+    
+    }
+
+    
+  };
   return (
-    <div className="container mx-auto px-[100px] py-6">
-      <div className="flex flex-col lg:flex-row justify-between lg:gap-[120px] max-w-[1380px] mx-auto">
-        {/* Left Section */}
-        <div className="w-full lg:w-[430px] flex-shrink-0 mb-8 lg:mb-0">
-          {/* Order Details */}
-          <div className="mb-8">
-            <h2 className="text-lg text-[] font-semibold mb-5">
-              How would you like to get your order?
-            </h2>
-            <p className="text-lg mb-4">
-              Customs regulation for Pakistan requires a copy of the recipient&apos; s
-              KYC. The address on the KYC needs to match the shipping address.
-              Our courier will contact you via SMS/email to obtain a copy of
-              your KYC. The KYC will be stored securely and used solely for the
-              purpose of clearing customs (including sharing it with customs
-              officials) for all orders and returns. If your KYC does not match
-              your shipping address, please click the link for more information.{" "}
-              <a href="#" className="text-black underline">
-                Learn More
-              </a>
-            </p>
-            <input
-              type="text"
-              placeholder="Deliver it"
-              className="w-full h-[55px] px-4 border border-black rounded-md"
-            />
+    <div className={`min-h-screen bg-gray-50`}>
+      {/* Breadcrumb */}
+      <div className="mt-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <nav className="flex items-center gap-2 py-4">
+            <Link
+              href="/cart"
+              className="text-[#666666] hover:text-black transition text-sm"
+            >
+              Cart
+            </Link>
+            <CgChevronRight className="w-4 h-4 text-[#666666]" />
+            <span className="text-sm">Checkout</span>
+          </nav>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Order Summary */}
+          <div className="bg-white border rounded-lg p-6 space-y-4">
+            <h2 className="text-lg font-semibold mb-4">Order Summary</h2>
+            {cartItems.length > 0 ? (
+              cartItems.map((item) => (
+                <div
+                  key={item._id}
+                  className="flex items-center gap-4 py-3 border-b"
+                >
+                  <div className="w-16 h-16 rounded overflow-hidden">
+                    {item.image && (
+                      <Image
+                        src={urlFor(item.image).url()}
+                        alt={item.productName}
+                        width={64}
+                        height={64}
+                        className="object-cover w-full h-full"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium">{item.productName}</h3>
+                    <p className="text-xs text-gray-500">
+                      Quantity: {item.inventory}
+                    </p>
+                  </div>
+                  <p className="text-sm font-medium">
+                    ${item.price * item.inventory}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">Your cart is empty.</p>
+            )}
+            <div className="text-right pt-4">
+              <p className="text-sm">
+                Subtotal: <span className="font-medium">${subtotal}</span>
+              </p>
+              <p className="text-sm">
+                Discount: <span className="font-medium">-${discount}</span>
+              </p>
+              <p className="text-lg font-semibold">
+                Total: ${total.toFixed(2)}
+              </p>
+            </div>
           </div>
 
-          {/* Address Form */}
-          <div className="mb-8">
-            <h2 className="text-lg font-medium mb-5">
-              Enter your name and address:
-            </h2>
-            <form className="space-y-4">
-              <input
-                type="text"
-                placeholder="First Name"
-                className="w-full h-[55px] px-4 border border-gray-300 rounded-md"
-              />
-              <input
-                type="text"
-                placeholder="Last Name"
-                className="w-full h-[55px] px-4 border border-gray-300 rounded-md"
-              />
-              <input
-                type="text"
-                placeholder="Address Line 1"
-                className="w-full h-[55px] px-4 border border-gray-300 rounded-md"
-              />
-              <input
-                type="text"
-                placeholder="Address Line 2"
-                className="w-full h-[55px] px-4 border border-gray-300 rounded-md"
-              />
-              <div className="flex gap-4">
+          {/* Billing Form */}
+          <div className="bg-white border rounded-lg p-6 space-y-6">
+            <h2 className="text-xl font-semibold">Billing Information</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="firstName">First Name</label>
                 <input
-                  type="text"
-                  placeholder="Postal Code"
-                  className="w-1/2 h-[55px] px-4 border border-gray-300 rounded-md"
+                  id="firstName"
+                  placeholder="Enter your first name"
+                  value={formValues.firstName}
+                  onChange={handleInputChange}
+                  className="border"
                 />
+                {formErrors.firstName && (
+                  <p className="text-sm text-red-500">
+                    First name is required.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="lastName">Last Name </label>
                 <input
-                  type="text"
-                  placeholder="Locality"
-                  className="w-1/2 h-[55px] px-4 border border-gray-300 rounded-md"
+                  id="lastName"
+                  placeholder="Enter your last name"
+                  value={formValues.lastName}
+                  onChange={handleInputChange}
                 />
+                {formErrors.lastName && (
+                  <p className="text-sm text-red-500">
+                    Last name is required.
+                  </p>
+                )}
               </div>
-              <div className="flex gap-4">
-                <select className="w-1/2 h-[55px] px-4 border border-gray-300 rounded-md">
-                  <option>State/Territory</option>
-                </select>
-                <select className="w-1/2 h-[55px] px-4 border border-gray-300 rounded-md">
-                  <option>Pakistan</option>
-                  <option>Uk</option>
-                  <option>USA</option>
-                  <option>UAE</option>
-                </select>
-              </div>
-            </form>
-          </div>
-
-          {/* Contact Information */}
-          <div className="mb-8">
-            <h2 className="text-lg font-medium mb-5">
-              What&apos;s your contact information?
-            </h2>
-            <input
-              type="email"
-              placeholder="Email"
-              className="w-full h-[55px] px-4 border border-gray-300 rounded-md mb-4"
-            />
-            <input
-              type="tel"
-              placeholder="Phone Number"
-              className="w-full h-[55px] px-4 border border-gray-300 rounded-md"
-            />
-          </div>
-
-          {/* PAN Information */}
-          <div className="mb-8">
-            <h2 className="text-lg font-medium mb-5">What&apos;s your PAN?</h2>
-            <input
-              type="text"
-              placeholder="PAN"
-              value={pan}
-              onChange={(e) => setPan(e.target.value)}
-              className="w-full h-[55px] px-4 border border-gray-300 rounded-md mb-2"
-            />
-            <div className="flex items-center mb-4">
+            </div>
+            <div>
+              <label htmlFor="address">Address </label>
               <input
-                type="checkbox"
-                checked={isChecked}
-                onChange={() => setIsChecked(!isChecked)}
-                className="mr-2"
+                id="address"
+                placeholder="Enter your address"
+                value={formValues.address}
+                onChange={handleInputChange}
               />
-              <label>Save PAN details to profile</label>
+              {formErrors.address && (
+                <p className="text-sm text-red-500">Address is required.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="city">City</label>
+              <input
+                id="city"
+                placeholder="Enter your city"
+                value={formValues.city}
+                onChange={handleInputChange}
+              />
+              {formErrors.city && (
+                <p className="text-sm text-red-500">City is required.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="zipCode">Zip Code</label>
+              <input
+                id="zipCode"
+                placeholder="Enter your zip code"
+                value={formValues.zipCode}
+                onChange={handleInputChange}
+              />
+              {formErrors.zipCode && (
+                <p className="text-sm text-red-500">Zip Code is required.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="phone">Phone</label>
+              <input
+                id="phone"
+                placeholder="Enter your phone number"
+                value={formValues.phone}
+                onChange={handleInputChange}
+              />
+              {formErrors.phone && (
+                <p className="text-sm text-red-500">Phone is required.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                placeholder="Enter your email address"
+                value={formValues.email}
+                onChange={handleInputChange}
+              />
+              {formErrors.email && (
+                <p className="text-sm text-red-500">Email is required.</p>
+              )}
             </div>
             <button
-              className="w-full h-[55px] bg-[#d9dada] text-[#515050] rounded-3xl font-medium"
-              onClick={() => alert("Continue clicked!")}
+              className="w-full h-12 bg-blue-500 hover:bg-blue-700 text-white"
+              onClick={handlePlaceOrder}
             >
-              Continue
+              Place Order
             </button>
-            <div className="space-y-4 mt-8 w-full">
-              <p className="border-b-[1.5px] border-[#d1d2d2] pb-4 text-black font-medium">
-                Delivery
-              </p>
-              <p className="border-b-[1.5px] border-[#d1d2d2] pb-4 text-[#727272] font-medium">
-                Shipping
-              </p>
-              <p className="border-b-[1.5px] border-[#d1d2d2] pb-4 text-[#727272] font-medium">
-                Billing
-              </p>
-              <p className="border-b-[1.5px] border-[#d1d2d2] pb-4 text-[#727272] font-medium">
-                Payment
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Section */}
-        <div className="w-full lg:w-[310px] flex-shrink-0">
-          <div className="p-4 rounded-lg">
-            <h1 className="text-lg font-semibold mb-5">Order Summary</h1>
-            <div className="border-b pb-4 mb-4">
-              <div className="flex justify-between mb-4">
-                <span>Subtotal</span>
-                <span>₹ 20,890.00</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Delivery</span>
-                <span>Free</span>
-              </div>
-            </div>
-            <div className="border-b pb-4">
-              <div className="flex justify-between">
-                <span className="font-bold text-black">Total</span>
-                <span className="font-bold text-black">₹ 20,890.00</span>
-              </div>
-            </div>
-
-            <div>
-              <p className="font-semibold mb-4">
-                Arrives Mon, 27 Mar - Wed, 12 Apr
-              </p>
-              <div className="flex mb-4">
-                <Image
-                  src="/Image5.jpg"
-                  alt="Product Image"
-                  width={208}
-                  height={208}
-                  className="object-cover mr-4"
-                />
-                <div className="max-w-[80px]">
-                  <p className="text-sm font-medium">
-                    Nike Dri-FIT ADV TechKnit Ultra
-                  </p>
-                  <p className="text-sm">Qty 1 | Size L</p>
-                  <p className="text-sm">₹ 3,895.00</p>
-                </div>
-              </div>
-              <div className="flex">
-                <Image
-                  src="/image.jpg"
-                  alt="Product Image"
-                  width={208}
-                  height={208}
-                  className="object-cover mr-4"
-                />
-                <div className="max-w-[80px]">
-                  <p className="text-sm font-medium">Nike Air Max 97 SE</p>
-                  <p className="text-sm">Qty 1 | Size UK 8</p>
-                  <p className="text-sm">₹ 16,995.00</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default Order;
+}
